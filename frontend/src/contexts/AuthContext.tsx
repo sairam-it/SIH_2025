@@ -1,12 +1,20 @@
 import { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/auth';
+const API_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://your-backend-url.com/api' 
+  : 'http://localhost:5000/api';
 
 interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  role: string;
+  avatar?: string;
+  wishlist: string[];
+  bookings: string[];
+  createdAt: string;
 }
 
 interface AuthContextType {
@@ -16,6 +24,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   signup: (name: string, email: string, password: string, phone?: string) => Promise<boolean>;
   logout: () => void;
+  updateProfile: (data: { name: string; phone?: string }) => Promise<boolean>;
 }
 
 interface AuthProviderProps {
@@ -25,6 +34,9 @@ interface AuthProviderProps {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Configure axios defaults
+axios.defaults.baseURL = API_URL;
+
 export const AuthProvider = ({ children, showNotification }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -33,31 +45,37 @@ export const AuthProvider = ({ children, showNotification }: AuthProviderProps) 
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
+    
     if (storedToken && storedUser) {
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
+      // Set axios default authorization header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
     }
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/login`, { email, password });
-      const { token, user } = response.data;
+      const response = await axios.post('/auth/login', { email, password });
+      const { token: newToken, user: userData } = response.data;
       
-      setToken(token);
-      setUser(user);
+      setToken(newToken);
+      setUser(userData);
       
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
+      localStorage.setItem('token', newToken);
+      localStorage.setItem('user', JSON.stringify(userData));
       
-      showNotification('Logged in successfully!');
-
+      // Set axios default authorization header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+      
+      showNotification(response.data.message || 'Logged in successfully!');
       setIsLoading(false);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed:', error);
-      showNotification('Login failed. Please check your credentials.', 'error');
+      const message = error.response?.data?.message || 'Login failed. Please check your credentials.';
+      showNotification(message, 'error');
       setIsLoading(false);
       return false;
     }
@@ -66,22 +84,46 @@ export const AuthProvider = ({ children, showNotification }: AuthProviderProps) 
   const signup = async (name: string, email: string, password: string, phone?: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/signup`, { name, email, password, phone });
-      const { token, user } = response.data;
+      const response = await axios.post('/auth/register', { name, email, password, phone });
+      const { token: newToken, user: userData } = response.data;
 
-      setToken(token);
-      setUser(user);
+      setToken(newToken);
+      setUser(userData);
 
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
+      localStorage.setItem('token', newToken);
+      localStorage.setItem('user', JSON.stringify(userData));
+      
+      // Set axios default authorization header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
-      showNotification('Account created successfully!');
-
+      showNotification(response.data.message || 'Account created successfully!');
       setIsLoading(false);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Signup failed:', error);
-      showNotification('Signup failed. Please try again.', 'error');
+      const message = error.response?.data?.message || 'Signup failed. Please try again.';
+      showNotification(message, 'error');
+      setIsLoading(false);
+      return false;
+    }
+  };
+
+  const updateProfile = async (data: { name: string; phone?: string }): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const response = await axios.put('/auth/profile', data);
+      const updatedUser = response.data.user;
+
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+
+      showNotification(response.data.message || 'Profile updated successfully!');
+      setIsLoading(false);
+      return true;
+    } catch (error: any) {
+      console.error('Profile update failed:', error);
+      const message = error.response?.data?.message || 'Profile update failed. Please try again.';
+      showNotification(message, 'error');
       setIsLoading(false);
       return false;
     }
@@ -92,11 +134,23 @@ export const AuthProvider = ({ children, showNotification }: AuthProviderProps) 
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    
+    // Remove axios default authorization header
+    delete axios.defaults.headers.common['Authorization'];
+    
     showNotification('Logged out successfully!');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      token, 
+      isLoading, 
+      login, 
+      signup, 
+      logout, 
+      updateProfile 
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -109,4 +163,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

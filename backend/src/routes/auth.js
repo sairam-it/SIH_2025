@@ -1,13 +1,27 @@
 const express = require('express');
+const { validate, registerSchema, loginSchema } = require('../middlewares/validation');
+const { protect } = require('../middlewares/auth');
+const {
+  register,
+  login,
+  getMe,
+  updateProfile,
+  changePassword,
+  logout
+} = require('../controllers/authController');
+
 const router = express.Router();
-const { signup, login } = require('../controllers/authController');
 
-// This creates the endpoint: POST /api/auth/signup
-// When a request hits this URL, it will run the 'signup' function.
-router.post('/signup', signup);
+// Public routes
+router.post('/register', validate(registerSchema), register);
+router.post('/login', validate(loginSchema), login);
 
-// This creates the endpoint: POST /api/auth/login
-// When a request hits this URL, it will run the 'login' function.
-router.post('/login', login);
+// Protected routes
+router.use(protect); // All routes after this middleware are protected
+
+router.get('/me', getMe);
+router.put('/profile', updateProfile);
+router.put('/change-password', changePassword);
+router.post('/logout', logout);
 
 module.exports = router;
